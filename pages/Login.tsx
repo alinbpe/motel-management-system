@@ -8,7 +8,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
-  const { loading } = useData();
+  const { loading, users } = useData();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +27,9 @@ const Login: React.FC = () => {
           </div>
       )
   }
+
+  // Check if default admin credentials still exist
+  const showDefaultCredentials = users.some(u => u.username === 'admin' && u.password === '123');
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -80,10 +83,12 @@ const Login: React.FC = () => {
           </button>
         </form>
         
-        <div className="mt-6 text-center text-xs text-gray-400">
-          <p>نام کاربری پیش‌فرض: admin</p>
-          <p>رمز عبور پیش‌فرض: 123</p>
-        </div>
+        {showDefaultCredentials && (
+            <div className="mt-6 text-center text-xs text-gray-400">
+            <p>نام کاربری پیش‌فرض: admin</p>
+            <p>رمز عبور پیش‌فرض: 123</p>
+            </div>
+        )}
       </div>
     </div>
   );

@@ -188,7 +188,7 @@ export const MockDB = {
     if (handleError(error, 'getStays')) return [];
     
     const { data: users } = await supabase.from('users').select('id, username');
-    const userMap = new Map(users?.map((u: any) => [u.id, u.username]) || []);
+    const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
 
     return data?.map(s => mapStay(s, userMap)) || [];
   },
@@ -221,7 +221,7 @@ export const MockDB = {
     if (handleError(error, 'getIssues')) return [];
 
     const { data: users } = await supabase.from('users').select('id, username');
-    const userMap = new Map(users?.map((u: any) => [u.id, u.username]) || []);
+    const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
 
     return data?.map(i => mapIssue(i, userMap)) || [];
   },
@@ -257,7 +257,7 @@ export const MockDB = {
       if (handleError(error, 'getLogs')) return [];
 
       const { data: users } = await supabase.from('users').select('id, username');
-      const userMap = new Map(users?.map((u: any) => [u.id, u.username]) || []);
+      const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
 
       return data?.map(l => mapLog(l, userMap)) || [];
   },
@@ -298,7 +298,7 @@ export const MockDB = {
       if (!data) return null;
 
       const { data: users } = await supabase.from('users').select('id, username');
-      const userMap = new Map(users?.map((u: any) => [u.id, u.username]) || []);
+      const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
       
       return mapChecklist(data, userMap);
   },

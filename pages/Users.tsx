@@ -184,7 +184,7 @@ const Users: React.FC = () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">رمز عبور</label>
                 <div className="relative">
                     <input
-                        type="text"
+                        type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-left dir-ltr pl-10"
@@ -192,7 +192,6 @@ const Users: React.FC = () => {
                     />
                     <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-3.5" />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">رمز عبور به صورت متن نمایش داده می‌شود.</p>
             </div>
 
             <div>

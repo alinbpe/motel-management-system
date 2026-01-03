@@ -1,20 +1,21 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Motel Management System
 
-# Run and deploy your AI Studio app
+یک وب‌اپ مدیریت متل با:
+- مدیریت وضعیت کلبه‌ها
+- سیستم نظافت و چک‌لیست
+- ثبت و پیگیری مشکلات فنی و نظافتی
+- نقش‌های کاربری (Admin/Reception/Technical/Housekeeping)
+- اتصال به Supabase
+- نوتیفیکیشن و تاریخچه عملیات
 
-This contains everything you need to run your app locally.
+## 📦 ساختار پروژه
 
-View your app in AI Studio: https://ai.studio/apps/drive/17kHv3Yv5HYKqpob9a-R7be4oVsR-E6sD
+این پروژه با:
+- React / Next.js
+- Supabase (DB + Auth)
+- PWA friendly (Mobile-first)
+ساخته شده.
 
-## Run Locally
+## 🚀 راه‌اندازی (Local)
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+۱. کلون کردن ریپو:

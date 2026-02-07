@@ -1,18 +1,25 @@
 
+import { Type } from "@google/genai";
+
+export { Type };
+
 export enum Role {
   ADMIN = 'ADMIN',
   RECEPTION = 'RECEPTION',
   HOUSEKEEPING = 'HOUSEKEEPING',
-  TECHNICAL = 'TECHNICAL',
+  MAINTENANCE = 'TECHNICAL',
+  WAREHOUSE = 'WAREHOUSE',
+  ACCOUNTANT = 'ACCOUNTANT',
+  SUPERVISOR = 'SUPERVISOR',
 }
 
 export enum CabinStatus {
-  OCCUPIED = 'OCCUPIED', // پر
-  EMPTY_DIRTY = 'EMPTY_DIRTY', // خالی - نظافت نشده
-  EMPTY_CLEAN = 'EMPTY_CLEAN', // خالی - نظافت شده
-  ISSUE_TECH = 'ISSUE_TECH', // مشکل فنی
-  ISSUE_CLEAN = 'ISSUE_CLEAN', // مشکل نظافتی
-  UNDER_MAINTENANCE = 'UNDER_MAINTENANCE', // در حال بررسی
+  OCCUPIED = 'OCCUPIED',
+  EMPTY_DIRTY = 'EMPTY_DIRTY',
+  EMPTY_CLEAN = 'EMPTY_CLEAN',
+  ISSUE_TECH = 'ISSUE_TECH',
+  ISSUE_CLEAN = 'ISSUE_CLEAN',
+  UNDER_MAINTENANCE = 'UNDER_MAINTENANCE',
 }
 
 export enum IssueType {
@@ -24,73 +31,113 @@ export enum IssueStatus {
   OPEN = 'OPEN',
   IN_PROGRESS = 'IN_PROGRESS',
   RESOLVED = 'RESOLVED',
+  CANCELLED = 'CANCELLED'
 }
 
-export interface User {
-  id: string;
-  username: string;
-  password?: string; // Added password field
-  role: Role;
-  createdAt: string;
-  lastLogin: string;
+export enum Priority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL'
 }
 
-export interface Cabin {
+export interface InventoryItem {
   id: string;
   name: string;
-  status: CabinStatus;
-  icon?: string; // Icon identifier
-  currentStayId?: string; // Links to active stay
-  activeIssueId?: string; // Links to active issue
-  pendingCleaningId?: string; // Links to a submitted but unapproved cleaning checklist
+  category: string;
+  quantity: number;
+  unit: string;
+  minThreshold: number;
+  lastRestocked: string;
 }
 
-export interface Stay {
-  id: string;
-  cabinId: string;
-  guestCount: number;
-  nights: number;
-  checkInDate: string; // ISO String
-  checkOutDate: string; // ISO String
-  createdBy: string;
-  isActive: boolean;
+export interface User { 
+  id: string; 
+  username: string; 
+  password?: string; 
+  role: Role; 
+  createdAt: string; 
+  lastLogin?: string; 
+}
+
+export interface Cabin { 
+  id: string; 
+  name: string; 
+  status: CabinStatus; 
+  icon?: string; 
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH'; 
+  pendingCleaningId?: string; 
+}
+
+export interface Stay { 
+  id: string; 
+  cabinId: string; 
+  guestId?: string; 
+  guestName?: string; 
+  guestPhone?: string; 
+  guestCount?: number; 
+  nights?: number; 
+  isActive: boolean; 
+  stayDate: string; 
+  checkInDate?: string; 
+  checkOutDate?: string; 
+  createdBy?: string; 
+  createdAt: string;
+  actualCheckoutAt?: string;
 }
 
 export interface Issue {
   id: string;
-  cabinId: string;
+  cabinId?: string | null;
+  title: string;
   type: IssueType;
+  priority: Priority;
   description: string;
   reportedBy: string;
-  reportedAt: string;
   status: IssueStatus;
+  reportedAt: string;
   resolvedAt?: string;
+  slaDeadline?: string;
+  isSynced?: boolean;
 }
 
-export interface Log {
+export interface Transaction {
   id: string;
-  userId: string;
+  type: 'INCOME' | 'EXPENSE';
+  amount: number;
+  category: string;
+  description: string;
+  date: string;
+}
+
+export interface Log { id: string; userId: string; username: string; action: string; details: string; timestamp: string; }
+export interface Notification { id: string; title: string; message: string; timestamp: string; read: boolean; link?: string; priority?: Priority; }
+export interface Guest { id: string; firstName: string; lastName: string; phone: string; createdAt: string; }
+export interface CleaningChecklist { id: string; cabinId: string; items: Record<string, boolean>; filledBy: string; approvedBy?: string; status: 'SUBMITTED' | 'APPROVED'; createdAt: string; approvedAt?: string; }
+export interface AIChatMessage { id: string; role: 'user' | 'model'; text: string; timestamp: string; }
+
+// Added missing interface for staff analytics
+export interface StaffReward {
+  id: string;
+  staffId: string;
   username: string;
-  action: string;
-  details: string;
-  timestamp: string;
+  period: string;
+  baseSalary: number;
+  performanceBonus: number;
+  penalty: number;
+  finalPay: number;
+  explanation: string;
+  status: 'PENDING' | 'PAID';
+  createdAt: string;
 }
 
-export interface Notification {
+// Added missing interface for staff training
+export interface StaffTraining {
   id: string;
-  message: string;
-  type: 'info' | 'warning' | 'success' | 'error';
-  timestamp: string;
-  read: boolean;
-}
-
-export interface CleaningChecklist {
-    id: string;
-    cabinId: string;
-    items: Record<string, boolean>;
-    filledBy: string; // username
-    approvedBy?: string; // username
-    status: 'SUBMITTED' | 'APPROVED';
-    createdAt: string;
-    approvedAt?: string;
+  staffId: string;
+  topic: string;
+  reason: string;
+  content: string;
+  status: 'ASSIGNED' | 'COMPLETED';
+  createdAt: string;
 }

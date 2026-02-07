@@ -1,334 +1,296 @@
 
-import { Cabin, CabinStatus, CleaningChecklist, Issue, Log, Notification, Role, Stay, User } from "../types";
-import { CABIN_DEFINITIONS } from "../constants";
+import { Cabin, CabinStatus, CleaningChecklist, Guest, Issue, Log, Notification, Role, Stay, User, Priority } from "../types";
 import { supabase } from "./supabaseClient";
 
-// --- HELPERS ---
-const handleError = (error: any, context: string) => {
-    if (error) {
-        // Log detailed error
-        console.error(`Supabase Error [${context}]:`, error.message || JSON.stringify(error));
-        return true;
+/**
+ * Enhanced error handler that classifies errors and manages reporting.
+ */
+const processError = (error: any, context: string): Error => {
+    if (!error) return new Error('Unknown Error');
+
+    const errorMsg = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    const errorCode = error.code || '';
+    
+    const isNetwork = 
+        errorMsg.includes('NetworkError') || 
+        errorMsg.includes('Failed to fetch') || 
+        error.name === 'TypeError' ||
+        errorCode === 'PGRST100' || 
+        error.status === 0;
+
+    // Detection for Missing Tables (42P01), Missing Columns (42703) or Schema Cache out of sync
+    const isSchemaError = 
+        errorCode === '42P01' || 
+        errorCode === '42703' ||
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('column') && errorMsg.includes('not found') ||
+        errorMsg.includes('relation') && errorMsg.includes('not found') ||
+        errorMsg.includes('schema cache') || 
+        errorMsg.includes('pending_cleaning_id');
+
+    if (isSchemaError) {
+        console.error(`Database Schema Missing [${context}]:`, errorMsg);
+        return new Error('MISSING_TABLES');
     }
-    return false;
+
+    if (!isNetwork) {
+        console.error(`Supabase DB Error [${context}]:`, errorMsg, error);
+    }
+
+    if (errorMsg.includes('violates row-level security policy')) return new Error('RLS_ERROR');
+    if (isNetwork) return new Error('NETWORK_ERROR');
+    
+    return new Error(errorMsg);
 };
 
-// Map DB snake_case to App camelCase
-const mapUser = (u: any): User => ({
-    id: u.id,
-    username: u.username || u.name, 
-    password: u.password,
-    role: u.role as Role,
-    createdAt: u.created_at,
-    lastLogin: u.last_login || new Date().toISOString()
-});
-
-const mapStay = (s: any, userMap: Map<string, string>): Stay => {
-    const today = new Date();
-    const checkOut = new Date(s.checkout_date);
-    const isActive = checkOut >= today || (s.checkout_date && new Date(s.checkout_date).setHours(0,0,0,0) >= today.setHours(0,0,0,0));
-
-    return {
-        id: s.id,
-        cabinId: s.cabin_id,
-        guestCount: s.guest_count,
-        nights: s.nights,
-        checkInDate: s.checkin_date,
-        checkOutDate: s.checkout_date,
-        createdBy: userMap.get(s.created_by) || 'Unknown',
-        isActive: true 
-    };
+const safeQuery = async <T>(
+    queryFn: () => Promise<{ data: T | null; error: any } | any>,
+    context: string,
+    retries = 2,
+    delay = 800
+): Promise<T | null> => {
+    try {
+        const result = await queryFn();
+        if (result && 'error' in result && result.error) {
+            const err = processError(result.error, context);
+            if (err.message === 'NETWORK_ERROR' && retries > 0) {
+                await new Promise(r => setTimeout(r, delay));
+                return safeQuery(queryFn, context, retries - 1, delay * 2);
+            }
+            throw err;
+        }
+        return result && 'data' in result ? result.data : result;
+    } catch (e: any) {
+        const err = processError(e, context);
+        if (err.message === 'NETWORK_ERROR' && retries > 0) {
+            await new Promise(r => setTimeout(r, delay));
+            return safeQuery(queryFn, context, retries - 1, delay * 2);
+        }
+        throw err;
+    }
 };
 
-const mapIssue = (i: any, userMap: Map<string, string>): Issue => ({
-    id: i.id,
-    cabinId: i.cabin_id,
-    type: i.type,
-    description: i.description,
-    reportedBy: userMap.get(i.created_by) || 'Unknown',
-    reportedAt: i.created_at,
-    status: i.status,
-    resolvedAt: i.resolved_at
+const mapGuest = (g: any): Guest => ({
+    id: g.id,
+    firstName: g.first_name,
+    lastName: g.last_name,
+    phone: g.phone,
+    createdAt: g.created_at
 });
 
-const mapLog = (l: any, userMap: Map<string, string>): Log => ({
-    id: l.id,
-    userId: l.user_id,
-    username: userMap.get(l.user_id) || 'System',
-    action: l.action,
-    details: l.details || l.entity || '',
-    timestamp: l.created_at
-});
-
-const mapNotification = (n: any): Notification => ({
-    id: n.id,
-    message: n.message || n.title,
-    type: 'info', 
-    timestamp: n.created_at,
-    read: n.read
-});
-
-const mapChecklist = (c: any, userMap: Map<string, string>): CleaningChecklist => ({
-    id: c.id,
-    cabinId: c.cabin_id,
-    items: c.items,
-    filledBy: userMap.get(c.filled_by) || 'Unknown',
-    approvedBy: c.approved_by ? (userMap.get(c.approved_by) || 'Unknown') : undefined,
-    status: c.status,
-    createdAt: c.created_at,
-    approvedAt: c.approved_at
+const mapStay = (s: any): Stay => ({
+    id: s.id,
+    cabinId: s.cabin_id,
+    guestId: s.guest_id,
+    guestCount: s.guest_count,
+    nights: s.nights,
+    stayDate: s.stay_date,
+    checkInDate: s.stay_date,
+    checkOutDate: s.checkout_date,
+    actualCheckoutAt: s.actual_checkout_at,
+    createdBy: s.created_by,
+    createdAt: s.created_at,
+    isActive: s.is_active,
+    guestName: s.guests ? `${s.guests.first_name} ${s.guests.last_name}` : 'نامشخص',
+    guestPhone: s.guests?.phone || ''
 });
 
 export const MockDB = {
-  checkConnection: async () => {
-    const tables = ['users', 'cabins', 'issues', 'stays', 'logs', 'notifications', 'cleaning_checklists'];
-    
-    try {
-        // Check all tables parallel
-        await Promise.all(tables.map(t => 
-            supabase.from(t).select('id').limit(1).then(({ error }) => {
-                if (error) throw error;
-            })
-        ));
-    } catch (error: any) {
-        // Check for missing table error codes (Postgres 42P01)
-        if (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('Could not find the table')) {
-            throw new Error('MISSING_TABLES');
-        }
-        console.error('Connection Check Failed:', error.message || error);
-        // Optional: Re-throw if it's a critical connection error that isn't just missing tables
-    }
-    return true;
-  },
+    async checkConnection() {
+        await safeQuery(() => supabase.from('cabins').select('count', { count: 'exact', head: true }).limit(1), 'checkCabins');
+    },
 
-  getUsers: async (): Promise<User[]> => {
-    const { data, error } = await supabase.from('users').select('*');
-    if (handleError(error, 'getUsers')) return [];
-    return data?.map(mapUser) || [];
-  },
-
-  saveUser: async (user: User) => {
-    const payload = {
-        id: user.id,
-        username: user.username,
-        password: user.password,
-        role: user.role,
-        created_at: user.createdAt
-    };
-    const { error } = await supabase.from('users').insert(payload);
-    handleError(error, 'saveUser');
-  },
-
-  updateUser: async (user: User) => {
-    const payload = {
-        username: user.username,
-        password: user.password,
-        role: user.role
-    };
-    const { error } = await supabase.from('users').update(payload).eq('id', user.id);
-    handleError(error, 'updateUser');
-  },
-
-  deleteUser: async (id: string) => {
-    const { error } = await supabase.from('users').delete().eq('id', id);
-    handleError(error, 'deleteUser');
-  },
-
-  getCabins: async (): Promise<Cabin[]> => {
-    const { data: cabinsData, error } = await supabase.from('cabins').select('*').order('name');
-    if (handleError(error, 'getCabins')) return [];
-
-    if (!cabinsData || cabinsData.length === 0) return [];
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    const { data: activeStays } = await supabase
-        .from('stays')
-        .select('id, cabin_id')
-        .gte('checkout_date', todayStr);
-
-    const { data: activeIssues } = await supabase
-        .from('issues')
-        .select('id, cabin_id')
-        .neq('status', 'RESOLVED');
-    
-    // Get submitted checklists that are not approved
-    const { data: pendingCleanings } = await supabase
-        .from('cleaning_checklists')
-        .select('id, cabin_id')
-        .eq('status', 'SUBMITTED');
-
-    return cabinsData.map((c: any) => {
-        const def = CABIN_DEFINITIONS.find(d => d.name === c.name);
-        const stay = activeStays?.find((s: any) => s.cabin_id === c.id);
-        const issue = activeIssues?.find((i: any) => i.cabin_id === c.id);
-        const cleaning = pendingCleanings?.find((cl: any) => cl.cabin_id === c.id);
-
-        return {
+    async getCabins(): Promise<Cabin[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('cabins').select('*').order('name'), 'getCabins');
+        return (data || []).map(c => ({
             id: c.id,
             name: c.name,
             status: c.status as CabinStatus,
-            icon: def?.icon || 'Home',
-            currentStayId: stay?.id,
-            activeIssueId: issue?.id,
-            pendingCleaningId: cleaning?.id
+            icon: c.icon,
+            pendingCleaningId: c.pending_cleaning_id || undefined
+        }));
+    },
+
+    async updateCabin(cabin: Partial<Cabin> & { id: string }) {
+        const updateData: any = {};
+        if (cabin.name !== undefined) updateData.name = cabin.name;
+        if (cabin.status !== undefined) updateData.status = cabin.status;
+        if (cabin.icon !== undefined) updateData.icon = cabin.icon;
+        
+        // Handle pending_cleaning_id explicitly
+        if (cabin.pendingCleaningId !== undefined) {
+            updateData.pending_cleaning_id = cabin.pendingCleaningId;
+        } else if (cabin.status === CabinStatus.EMPTY_CLEAN) {
+            // Automatically clear pending cleaning if status becomes clean
+            updateData.pending_cleaning_id = null;
+        }
+
+        await safeQuery(() => supabase.from('cabins').update(updateData).eq('id', cabin.id), 'updateCabin');
+    },
+
+    async getUsers(): Promise<User[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('users').select('*'), 'getUsers');
+        return (data || []).map(u => ({
+            id: u.id,
+            username: u.username,
+            password: u.password,
+            role: u.role as Role,
+            createdAt: u.created_at,
+            lastLogin: u.last_login
+        }));
+    },
+
+    async saveUser(user: User) {
+        await safeQuery(() => supabase.from('users').upsert({
+            id: user.id,
+            username: user.username,
+            password: user.password,
+            role: user.role
+        }), 'saveUser');
+    },
+
+    async getGuests(): Promise<Guest[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('guests').select('*').order('created_at', { ascending: false }), 'getGuests');
+        return (data || []).map(mapGuest);
+    },
+
+    async getGuestByPhone(phone: string): Promise<Guest | null> {
+        const data = await safeQuery<any>(() => supabase.from('guests').select('*').eq('phone', phone).maybeSingle(), 'getGuestByPhone');
+        return data ? mapGuest(data) : null;
+    },
+
+    async saveGuest(guest: Partial<Guest>): Promise<Guest> {
+        const data = await safeQuery<any>(() => supabase.from('guests').upsert({
+            first_name: guest.firstName,
+            last_name: guest.lastName,
+            phone: guest.phone
+        }).select().single(), 'saveGuest');
+        return mapGuest(data);
+    },
+
+    async getStays(): Promise<Stay[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('stays').select('*, guests(*)').order('created_at', { ascending: false }), 'getStays');
+        return (data || []).map(mapStay);
+    },
+
+    async addStay(stay: Partial<Stay>) {
+        await safeQuery(() => supabase.from('stays').insert({
+            cabin_id: stay.cabinId,
+            guest_id: stay.guestId,
+            guest_count: stay.guestCount,
+            nights: stay.nights,
+            stay_date: stay.stayDate,
+            checkout_date: stay.checkOutDate,
+            created_by: stay.createdBy,
+            is_active: true
+        }), 'addStay');
+    },
+
+    async deleteStay(stayId: string) {
+        await safeQuery(() => supabase.from('stays').delete().eq('id', stayId), 'deleteStay');
+    },
+
+    async deactivateStaysForCabin(cabinId: string) {
+        await safeQuery(() => supabase.from('stays').update({ 
+            is_active: false,
+            actual_checkout_at: new Date().toISOString()
+        }).eq('cabin_id', cabinId).eq('is_active', true), 'deactivateStaysForCabin');
+    },
+
+    async getIssues(): Promise<Issue[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('issues').select('*').order('created_at', { ascending: false }), 'getIssues');
+        return (data || []).map(i => ({
+            id: i.id,
+            cabinId: i.cabin_id,
+            title: i.title || 'بدون عنوان',
+            type: i.type,
+            priority: i.priority || Priority.MEDIUM,
+            description: i.description,
+            reportedBy: i.reported_by,
+            reportedAt: i.created_at,
+            status: i.status,
+            resolvedAt: i.resolved_at
+        }));
+    },
+
+    async saveIssue(issue: Issue) {
+        await safeQuery(() => supabase.from('issues').upsert({
+            id: issue.id,
+            cabin_id: issue.cabinId,
+            title: issue.title,
+            type: issue.type,
+            priority: issue.priority,
+            description: issue.description,
+            reported_by: issue.reportedBy,
+            status: issue.status,
+            resolved_at: issue.resolvedAt
+        }), 'saveIssue');
+    },
+
+    async getLogs(): Promise<Log[]> {
+        const data = await safeQuery<any[]>(() => supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(100), 'getLogs');
+        return (data || []).map(l => ({
+            id: l.id,
+            userId: l.user_id,
+            username: l.username,
+            action: l.action,
+            details: l.details,
+            timestamp: l.created_at
+        }));
+    },
+
+    async addLog(log: Log) {
+        try {
+            await supabase.from('logs').insert({
+                user_id: log.userId,
+                username: log.username,
+                action: log.action,
+                details: log.details
+            });
+        } catch (e: any) {
+            console.warn('Logging failed silently:', e.message);
+        }
+    },
+
+    async getNotifications(): Promise<Notification[]> {
+        return [];
+    },
+
+    async getChecklist(id: string): Promise<CleaningChecklist | null> {
+        const data = await safeQuery<any>(() => supabase.from('checklists').select('*').eq('id', id).maybeSingle(), 'getChecklist');
+        if (!data) return null;
+        return {
+            id: data.id,
+            cabinId: data.cabin_id,
+            items: data.items,
+            filledBy: data.filled_by,
+            approvedBy: data.approved_by,
+            status: data.status,
+            createdAt: data.created_at,
+            approvedAt: data.approved_at
         };
-    });
-  },
+    },
 
-  updateCabin: async (cabin: Cabin) => {
-    const { error } = await supabase
-        .from('cabins')
-        .update({ status: cabin.status })
-        .eq('id', cabin.id);
-    handleError(error, 'updateCabin');
-  },
+    async submitChecklist(cl: Partial<CleaningChecklist>) {
+        const res = await safeQuery<any>(() => supabase.from('checklists').insert({
+            cabin_id: cl.cabinId,
+            items: cl.items,
+            filled_by: cl.filledBy,
+            status: 'SUBMITTED'
+        }).select().single(), 'submitChecklist');
+        
+        // Link checklist to cabin
+        if (res && res.id) {
+            await this.updateCabin({ id: cl.cabinId!, pendingCleaningId: res.id });
+        }
+        return res;
+    },
 
-  getStays: async (): Promise<Stay[]> => {
-    const { data, error } = await supabase.from('stays').select('*').order('created_at', { ascending: false });
-    if (handleError(error, 'getStays')) return [];
-    
-    const { data: users } = await supabase.from('users').select('id, username');
-    const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
-
-    return data?.map(s => mapStay(s, userMap)) || [];
-  },
-
-  addStay: async (stay: Stay) => {
-      // Find User ID from username
-      const { data: uData } = await supabase.from('users').select('id').eq('username', stay.createdBy).single();
-      const userId = uData?.id;
-
-      const payload = {
-          id: stay.id,
-          cabin_id: stay.cabinId,
-          guest_count: stay.guestCount,
-          nights: stay.nights,
-          checkin_date: stay.checkInDate,
-          checkout_date: stay.checkOutDate,
-          created_by: userId
-      };
-      
-      const { error } = await supabase.from('stays').insert(payload);
-      handleError(error, 'addStay');
-  },
-
-  cleanupStays: async () => {
-      return false; 
-  },
-
-  getIssues: async (): Promise<Issue[]> => {
-    const { data, error } = await supabase.from('issues').select('*').order('created_at', { ascending: false });
-    if (handleError(error, 'getIssues')) return [];
-
-    const { data: users } = await supabase.from('users').select('id, username');
-    const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
-
-    return data?.map(i => mapIssue(i, userMap)) || [];
-  },
-
-  saveIssue: async (issue: Issue) => {
-     const { data: existing } = await supabase.from('issues').select('id').eq('id', issue.id).single();
-     
-     const { data: uData } = await supabase.from('users').select('id').eq('username', issue.reportedBy).single();
-     const userId = uData?.id;
-
-     const payload = {
-         id: issue.id,
-         cabin_id: issue.cabinId,
-         type: issue.type,
-         description: issue.description,
-         status: issue.status,
-         created_by: userId,
-         created_at: issue.reportedAt,
-         resolved_at: issue.resolvedAt
-     };
-
-     if (existing) {
-         const { error } = await supabase.from('issues').update(payload).eq('id', issue.id);
-         handleError(error, 'updateIssue');
-     } else {
-         const { error } = await supabase.from('issues').insert(payload);
-         handleError(error, 'saveIssue');
-     }
-  },
-
-  getLogs: async (): Promise<Log[]> => {
-      const { data, error } = await supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(100);
-      if (handleError(error, 'getLogs')) return [];
-
-      const { data: users } = await supabase.from('users').select('id, username');
-      const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
-
-      return data?.map(l => mapLog(l, userMap)) || [];
-  },
-
-  addLog: async (log: Log) => {
-      const payload = {
-          id: log.id,
-          user_id: log.userId,
-          action: log.action,
-          details: log.details,
-          created_at: log.timestamp
-      };
-      const { error } = await supabase.from('logs').insert(payload);
-      handleError(error, 'addLog');
-  },
-
-  getNotifications: async (): Promise<Notification[]> => {
-      const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(50);
-      if (handleError(error, 'getNotifications')) return [];
-      return data?.map(mapNotification) || [];
-  },
-
-  addNotification: async (notif: Notification) => {
-      const payload = {
-          id: notif.id,
-          message: notif.message,
-          read: notif.read,
-          created_at: notif.timestamp
-      };
-      const { error } = await supabase.from('notifications').insert(payload);
-      handleError(error, 'addNotification');
-  },
-
-  // --- CLEANING CHECKLIST METHODS ---
-  getChecklist: async (checklistId: string): Promise<CleaningChecklist | null> => {
-      const { data, error } = await supabase.from('cleaning_checklists').select('*').eq('id', checklistId).single();
-      if (handleError(error, 'getChecklist')) return null;
-      if (!data) return null;
-
-      const { data: users } = await supabase.from('users').select('id, username');
-      const userMap = new Map<string, string>(users?.map((u: any) => [u.id, u.username]) || []);
-      
-      return mapChecklist(data, userMap);
-  },
-
-  submitChecklist: async (checklist: CleaningChecklist) => {
-    const { data: uData } = await supabase.from('users').select('id').eq('username', checklist.filledBy).single();
-    const userId = uData?.id;
-
-    const payload = {
-        id: checklist.id,
-        cabin_id: checklist.cabinId,
-        items: checklist.items,
-        filled_by: userId,
-        status: 'SUBMITTED',
-        created_at: checklist.createdAt
-    };
-    const { error } = await supabase.from('cleaning_checklists').insert(payload);
-    handleError(error, 'submitChecklist');
-  },
-
-  approveChecklist: async (checklistId: string, approverUsername: string) => {
-      const { data: uData } = await supabase.from('users').select('id').eq('username', approverUsername).single();
-      const userId = uData?.id;
-
-      const payload = {
-          status: 'APPROVED',
-          approved_by: userId,
-          approved_at: new Date().toISOString()
-      };
-      const { error } = await supabase.from('cleaning_checklists').update(payload).eq('id', checklistId);
-      handleError(error, 'approveChecklist');
-  }
+    async approveChecklist(id: string, operator: string) {
+        await safeQuery(() => supabase.from('checklists').update({
+            approved_by: operator,
+            status: 'APPROVED',
+            approved_at: new Date().toISOString()
+        }).eq('id', id), 'approveChecklist');
+    }
 };

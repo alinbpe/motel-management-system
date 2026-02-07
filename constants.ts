@@ -2,24 +2,35 @@
 import { CabinStatus, Role } from "./types";
 
 export const CABIN_DEFINITIONS = [
-  { name: "شوکا", icon: "Mountain" },      // Deer -> Mountain/Nature
-  { name: "میچکا", icon: "Bird" },         // Sparrow -> Bird
-  { name: "پاپلی", icon: "Flower" },       // Butterfly -> Flower
-  { name: "اوپاچ", icon: "Cloud" },        // Local/Abstract -> Cloud
-  { name: "زیک", icon: "Feather" },        // Bird -> Feather
-  { name: "سرخدار", icon: "TreePine" },    // Yew Tree -> Pine Tree
-  { name: "شمشاد", icon: "TreeDeciduous" },// Boxwood -> Deciduous Tree
-  { name: "مرال", icon: "Crown" },         // Red Deer -> Crown (King)
-  { name: "نمازین", icon: "Sun" }          // Prayer -> Sun/Light
+  { name: "شوکا", icon: "Mountain" },
+  { name: "میچکا", icon: "Bird" },
+  { name: "پاپلی", icon: "Flower" },
+  { name: "اوپاچ", icon: "Cloud" },
+  { name: "زیک", icon: "Feather" },
+  { name: "سرخدار", icon: "TreePine" },
+  { name: "شمشاد", icon: "TreeDeciduous" },
+  { name: "مرال", icon: "Crown" },
+  { name: "نمازین", icon: "Sun" }
 ];
 
-export const CABIN_NAMES = CABIN_DEFINITIONS.map(d => d.name);
-
 export const ROLE_LABELS: Record<Role, string> = {
-  [Role.ADMIN]: "مدیر سیستم",
+  [Role.ADMIN]: "مدیریت کل",
   [Role.RECEPTION]: "پذیرش",
-  [Role.HOUSEKEEPING]: "خانه‌دار",
-  [Role.TECHNICAL]: "تاسیسات / فنی",
+  [Role.HOUSEKEEPING]: "خانه‌داری",
+  [Role.MAINTENANCE]: "تاسیسات و فنی",
+  [Role.WAREHOUSE]: "انبارداری",
+  [Role.ACCOUNTANT]: "حسابداری",
+  [Role.SUPERVISOR]: "سرپرست شیفت",
+};
+
+export const ROLE_THEMES: Record<Role, string> = {
+  [Role.ADMIN]: "brand",
+  [Role.RECEPTION]: "blue",
+  [Role.HOUSEKEEPING]: "emerald",
+  [Role.MAINTENANCE]: "orange",
+  [Role.WAREHOUSE]: "teal",
+  [Role.ACCOUNTANT]: "indigo",
+  [Role.SUPERVISOR]: "slate",
 };
 
 export const STATUS_LABELS: Record<CabinStatus, string> = {
@@ -32,12 +43,12 @@ export const STATUS_LABELS: Record<CabinStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<CabinStatus, string> = {
-  [CabinStatus.OCCUPIED]: "bg-red-100 text-red-800 border-red-200",
-  [CabinStatus.EMPTY_DIRTY]: "bg-orange-100 text-orange-800 border-orange-200",
-  [CabinStatus.EMPTY_CLEAN]: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  [CabinStatus.ISSUE_TECH]: "bg-slate-800 text-white border-slate-600",
-  [CabinStatus.ISSUE_CLEAN]: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  [CabinStatus.UNDER_MAINTENANCE]: "bg-blue-100 text-blue-800 border-blue-200",
+  [CabinStatus.OCCUPIED]: "bg-red-50 text-red-900 border-red-200",
+  [CabinStatus.EMPTY_DIRTY]: "bg-orange-50 text-orange-900 border-orange-200",
+  [CabinStatus.EMPTY_CLEAN]: "bg-emerald-50 text-emerald-900 border-emerald-200",
+  [CabinStatus.ISSUE_TECH]: "bg-slate-900 text-white border-slate-700",
+  [CabinStatus.ISSUE_CLEAN]: "bg-amber-50 text-amber-900 border-amber-200",
+  [CabinStatus.UNDER_MAINTENANCE]: "bg-blue-50 text-blue-900 border-blue-200",
 };
 
 export const CLEANING_ITEMS = [

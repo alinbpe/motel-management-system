@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -118,7 +119,8 @@ const Users: React.FC = () => {
                         <span className={`px-2.5 py-1 rounded-full text-xs font-bold border
                             ${user.role === Role.ADMIN ? 'bg-purple-50 text-purple-700 border-purple-200' : 
                             user.role === Role.RECEPTION ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            user.role === Role.TECHNICAL ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            /* Fixed: Using Role.MAINTENANCE instead of non-existent Role.TECHNICAL */
+                            user.role === Role.MAINTENANCE ? 'bg-orange-50 text-orange-700 border-orange-200' :
                             'bg-emerald-50 text-emerald-700 border-emerald-200'}
                         `}>
                             {ROLE_LABELS[user.role]}

@@ -1,161 +1,83 @@
 
-import React from 'react';
-import { Database, Copy, Check } from 'lucide-react';
+import { Database, Copy, Check, Shield, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
 
-const SETUP_SQL = `-- 1. ایجاد جداول اصلی
-create table if not exists public.users (
-  id uuid primary key default gen_random_uuid(),
-  username text unique not null,
-  password text,
-  role text not null check (role in ('ADMIN','RECEPTION','HOUSEKEEPING','TECHNICAL')),
-  created_at timestamp with time zone default now(),
-  last_login timestamp with time zone
-);
+const RLS_SQL = `-- Motel OS - Enterprise RLS & Schema Configuration
 
-create table if not exists public.cabins (
-  id uuid primary key default gen_random_uuid(),
-  name text unique not null,
-  status text not null,
-  created_at timestamp with time zone default now()
-);
+-- 1. جدول کاربران (بروزرسانی محدودیت نقش‌ها)
+-- در صورتی که با خطای users_role_check مواجه شدید، دستورات زیر را اجرا کنید تا محدودیت با کد هماهنگ شود:
 
-create table if not exists public.issues (
-  id uuid primary key default gen_random_uuid(),
-  cabin_id uuid references public.cabins(id),
-  type text,
-  status text,
-  description text,
-  created_by uuid references public.users(id),
-  created_at timestamp with time zone default now(),
-  resolved_at timestamp with time zone
-);
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check 
+CHECK (role IN ('ADMIN', 'RECEPTION', 'HOUSEKEEPING', 'TECHNICAL', 'MAINTENANCE', 'WAREHOUSE', 'ACCOUNTANT', 'SUPERVISOR'));
 
-create table if not exists public.stays (
-  id uuid primary key default gen_random_uuid(),
-  cabin_id uuid references public.cabins(id),
-  guest_count int,
-  nights int,
-  checkin_date date,
-  checkout_date date,
-  created_by uuid references public.users(id),
-  created_at timestamp with time zone default now()
-);
+-- 2. فعال‌سازی امنیت لایه دیتابیس (RLS)
+ALTER TABLE cabins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE issues ENABLE ROW LEVEL SECURITY;
 
-create table if not exists public.logs (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references public.users(id),
-  action text,
-  details text,
-  created_at timestamp with time zone default now()
-);
+-- 3. سیاست‌های دسترسی (Policies)
+CREATE POLICY "Admin/Supervisor full access" ON cabins 
+FOR ALL TO authenticated 
+USING (auth.jwt() ->> 'role' IN ('ADMIN', 'SUPERVISOR'));
 
-create table if not exists public.notifications (
-  id uuid primary key default gen_random_uuid(),
-  message text,
-  read boolean default false,
-  created_at timestamp with time zone default now()
-);
+CREATE POLICY "Reception read/write status" ON cabins 
+FOR UPDATE TO authenticated 
+USING (auth.jwt() ->> 'role' = 'RECEPTION')
+WITH CHECK (status IN ('OCCUPIED', 'EMPTY_CLEAN'));
 
-create table if not exists public.cleaning_checklists (
-  id uuid primary key default gen_random_uuid(),
-  cabin_id uuid references public.cabins(id),
-  items jsonb not null,
-  filled_by uuid references public.users(id),
-  approved_by uuid references public.users(id),
-  status text check (status in ('SUBMITTED','APPROVED')),
-  created_at timestamp with time zone default now(),
-  approved_at timestamp with time zone
-);
+CREATE POLICY "Staff read cabins" ON cabins 
+FOR SELECT TO authenticated 
+USING (true);
 
--- 2. فعال‌سازی RLS
-alter table public.users enable row level security;
-alter table public.cabins enable row level security;
-alter table public.issues enable row level security;
-alter table public.stays enable row level security;
-alter table public.logs enable row level security;
-alter table public.notifications enable row level security;
-alter table public.cleaning_checklists enable row level security;
+CREATE POLICY "Admins manage users" ON users 
+FOR ALL TO authenticated 
+USING (auth.jwt() ->> 'role' = 'ADMIN');
 
--- 3. ایجاد سیاست‌های دسترسی (Public برای سادگی فعلی)
-create policy "Public access" on public.users for all using (true);
-create policy "Public access" on public.cabins for all using (true);
-create policy "Public access" on public.issues for all using (true);
-create policy "Public access" on public.stays for all using (true);
-create policy "Public access" on public.logs for all using (true);
-create policy "Public access" on public.notifications for all using (true);
-create policy "Public access" on public.cleaning_checklists for all using (true);
+CREATE POLICY "Users read own profile" ON users 
+FOR SELECT TO authenticated 
+USING (auth.uid() = id);
 
--- 4. داده‌های اولیه کلبه‌ها
-insert into public.cabins (name, status) values
-('شوکا', 'EMPTY_CLEAN'),
-('میچکا', 'EMPTY_CLEAN'),
-('پاپلی', 'EMPTY_CLEAN'),
-('اوپاچ', 'EMPTY_CLEAN'),
-('زیک', 'EMPTY_CLEAN'),
-('سرخدار', 'EMPTY_CLEAN'),
-('شمشاد', 'EMPTY_CLEAN'),
-('مرال', 'EMPTY_CLEAN'),
-('نمازین', 'EMPTY_CLEAN')
-on conflict (name) do nothing;
+CREATE POLICY "Reception/Admin full access stays" ON stays 
+FOR ALL TO authenticated 
+USING (auth.jwt() ->> 'role' IN ('ADMIN', 'RECEPTION'));
 
--- 5. ایجاد کاربر مدیر پیش‌فرض
-insert into public.users (username, password, role) 
-values ('admin', '123', 'ADMIN')
-on conflict (username) do nothing;
+CREATE POLICY "Staff manage issues" ON issues 
+FOR ALL TO authenticated 
+USING (auth.jwt() ->> 'role' IN ('ADMIN', 'TECHNICAL', 'MAINTENANCE', 'HOUSEKEEPING'));
 `;
 
 export const DbSetup: React.FC = () => {
-  const [copied, setCopied] = React.useState(false);
-
+  const [copied, setCopied] = useState(false);
   const handleCopy = () => {
-    navigator.clipboard.writeText(SETUP_SQL);
+    navigator.clipboard.writeText(RLS_SQL);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white max-w-4xl w-full rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
-          <div className="bg-red-100 p-3 rounded-full">
-            <Database className="w-8 h-8 text-red-600" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-red-800">پایگاه داده یافت نشد</h1>
-            <p className="text-red-600 text-sm mt-1">
-              جداول مورد نیاز در Supabase پیدا نشدند. لطفاً اسکریپت زیر را در بخش SQL Editor پروژه خود اجرا کنید.
-            </p>
-          </div>
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-right" dir="rtl">
+      <div className="max-w-3xl w-full bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="p-10 text-center border-b border-slate-100 bg-slate-50">
+          <Shield className="w-16 h-16 text-brand-600 mx-auto mb-6" />
+          <h1 className="text-3xl font-black text-slate-800">امنیت و تنظیمات دیتابیس</h1>
+          <p className="text-slate-500 mt-3 text-sm font-bold max-w-lg mx-auto leading-relaxed">
+            برای رفع خطای "users_role_check" و فعال‌سازی امنیت (RLS)، کدهای زیر را در SQL Editor وب‌سایت Supabase اجرا کنید.
+          </p>
         </div>
-
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <div className="p-4 bg-slate-800 text-white flex justify-between items-center">
-            <span className="text-sm font-mono text-slate-400">setup_schema.sql</span>
-            <button 
-              onClick={handleCopy}
-              className="flex items-center gap-2 text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition-colors"
-            >
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'کپی شد!' : 'کپی اسکریپت'}
-            </button>
+        <div className="p-10 space-y-6">
+          <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex items-center gap-3 text-rose-600 text-xs font-bold">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
+            توجه: این دستورات محدودیت‌های نقش (Role) را با کد برنامه هماهنگ می‌کنند.
           </div>
-          <div className="flex-1 overflow-auto bg-slate-900 p-4 text-left dir-ltr">
-            <pre className="text-sm font-mono text-green-400 whitespace-pre-wrap leading-relaxed">
-              {SETUP_SQL}
-            </pre>
-          </div>
-        </div>
-
-        <div className="p-6 border-t bg-gray-50 text-center">
-            <p className="text-sm text-gray-600">
-                پس از اجرای کد بالا در Supabase، این صفحه را رفرش کنید.
-            </p>
-            <button 
-                onClick={() => window.location.reload()}
-                className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-                رفرش صفحه
-            </button>
+          <pre className="bg-slate-900 text-emerald-400 p-8 rounded-[2rem] text-[11px] font-mono overflow-auto max-h-[400px] text-left dir-ltr border-4 border-slate-800 shadow-inner">
+            {RLS_SQL}
+          </pre>
+          <button onClick={handleCopy} className="w-full py-5 bg-brand-600 text-white rounded-3xl font-black flex items-center justify-center gap-3 transition-all hover:bg-brand-700 shadow-xl shadow-brand-100 active:scale-95">
+            {copied ? <Check className="w-6 h-6" /> : <Copy className="w-6 h-6" />}
+            {copied ? 'کدها کپی شدند' : 'کپی دستورات SQL برای Supabase'}
+          </button>
         </div>
       </div>
     </div>

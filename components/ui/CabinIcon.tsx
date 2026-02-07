@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { 
-    Home, Mountain, Bird, Flower, Cloud, Feather, TreePine, TreeDeciduous, Crown, Sun
+    Home, Mountain, Bird, Flower, Cloud, Feather, TreePine, TreeDeciduous, Crown, Sun,
+    Tent, Warehouse, Castle, Building, Hotel, Bed, Lamp
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -13,8 +15,17 @@ const ICON_MAP: Record<string, React.ElementType> = {
   "TreeDeciduous": TreeDeciduous,
   "Crown": Crown,
   "Sun": Sun,
-  "Home": Home
+  "Home": Home,
+  "Tent": Tent,
+  "Warehouse": Warehouse,
+  "Castle": Castle,
+  "Building": Building,
+  "Hotel": Hotel,
+  "Bed": Bed,
+  "Lamp": Lamp
 };
+
+export const AVAILABLE_ICONS = Object.keys(ICON_MAP);
 
 interface CabinIconProps {
     iconName?: string;
